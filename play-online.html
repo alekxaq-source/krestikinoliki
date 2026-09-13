@@ -1,0 +1,248 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Партия по сети — Крестики-нолики</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<link rel="stylesheet" href="style.css" />
+</head>
+<body class="gate">
+
+<header class="top">
+  <a class="brand brand-link" href="menu.html">
+    <svg width="30" height="30" viewBox="0 0 30 30" fill="none" aria-hidden="true">
+      <path d="M5 5 L13 13 M13 5 L5 13" stroke="#5E9FE8" stroke-width="2.6" stroke-linecap="round"/>
+      <circle cx="19.5" cy="19.5" r="6.5" stroke="#DE9255" stroke-width="2.6"/>
+    </svg>
+    <span>
+      <div class="brand-title">Крестики-нолики</div>
+      <div class="brand-sub">на Supabase</div>
+    </span>
+  </a>
+  <nav class="nav">
+    <a href="menu.html">Меню</a>
+    <a href="leaderboard.html">Лидеры</a>
+  </nav>
+  <div id="user-chip" class="chip" hidden>
+    <span class="avatar" id="avatar">И</span>
+    <span class="who" id="user-name">Игрок</span>
+    <button id="sign-out" class="btn ghost small" type="button">Выйти</button>
+  </div>
+</header>
+
+<main class="page">
+  <a class="back-link" href="online.html" id="leave-link">← Покинуть комнату</a>
+  <div class="card board-card">
+    <h1 class="page-title">Партия по сети</h1>
+
+    <div class="online-panel">
+      <div class="code-box">
+        <span class="code" id="room-code">······</span>
+        <button id="btn-copy" class="btn ghost small" type="button">Копировать ссылку</button>
+      </div>
+      <div class="opponent">
+        <span>Соперник: <b id="opponent-name">ждём…</b></span>
+        <span style="color:var(--faint); font-size:13px;">вы играете за <b id="my-mark" style="color:var(--muted)">—</b></span>
+      </div>
+    </div>
+
+    <div id="status" class="status" aria-live="polite">Загрузка комнаты…</div>
+    <div id="board" class="board"></div>
+    <div class="btn-row">
+      <button id="new-game" class="btn primary grow" type="button" disabled>Сыграть ещё</button>
+      <button id="sound-toggle" class="btn ghost icon" type="button" title="Звук вкл/выкл" aria-label="Переключить звук">🔊</button>
+    </div>
+  </div>
+</main>
+
+<script src="app.js"></script>
+<script>
+(function () {
+'use strict';
+
+var roomCode = (TT.param('room') || '').toUpperCase();
+var room = null;
+var myMark = null;
+var channel = null;
+var finishRecorded = false;
+var lastFilled = 0;
+var boardArr = ['', '', '', '', '', '', '', '', ''];
+var over = true;
+var boardCtl = null;
+var statusEl = null;
+
+function subscribeRoom(code) {
+  if (channel) TT.sb.removeChannel(channel);
+  channel = TT.sb.channel('room:' + code)
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'game_rooms', filter: 'code=eq.' + code },
+      function (payload) {
+        if (payload.eventType === 'DELETE') {
+          room = null;
+          statusEl.textContent = 'Хост закрыл комнату';
+          return;
+        }
+        renderRoom(payload.new);
+      })
+    .subscribe();
+}
+
+function filledIndexOfLast(b) {
+  for (var i = 8; i >= 0; i--) if (b[i]) return i;
+  return 0;
+}
+
+function renderRoom(r) {
+  room = r;
+  if (!myMark) myMark = (TT.currentUser && r.host_id === TT.currentUser.id) ? 'X' : 'O';
+  TT.$('room-code').textContent = r.code;
+  TT.$('opponent-name').textContent = myMark === 'X' ? (r.guest_name || 'ждём…') : r.host_name;
+  TT.$('my-mark').textContent = myMark === 'X' ? 'крестики (X)' : 'нолики (O)';
+
+  var newBoard = Array.isArray(r.board) ? r.board : ['', '', '', '', '', '', '', '', ''];
+  var filled = 0;
+  for (var i = 0; i < 9; i++) if (newBoard[i]) filled++;
+  var prevFilled = lastFilled;
+
+  boardArr = newBoard.slice();
+  boardCtl.clear();
+  for (var j = 0; j < 9; j++) if (boardArr[j]) boardCtl.place(j, boardArr[j], true);
+  if (filled > prevFilled) TT.playSound(boardArr[filledIndexOfLast(boardArr)] === 'X' ? 'x' : 'o');
+  lastFilled = filled;
+
+  var w = TT.winnerOf(boardArr);
+  if (w) boardCtl.highlight(w.line, w.player);
+
+  if (r.status === 'waiting') {
+    statusEl.textContent = 'Ждём соперника — отправьте ему ссылку';
+    TT.$('new-game').disabled = true;
+  } else if (r.status === 'finished' || w || filled === 9) {
+    TT.$('new-game').disabled = false;
+    over = true;
+    var result = w ? w.player : (r.winner === 'draw' ? null : r.winner);
+    if (!result || result === 'draw') {
+      statusEl.textContent = 'Ничья!';
+      if (!finishRecorded) { TT.playSound('draw'); TT.recordResult('draws'); finishRecorded = true; }
+    } else if (result === myMark) {
+      statusEl.textContent = 'Вы победили! 🎉';
+      if (!finishRecorded) { TT.playSound('win'); TT.recordResult('wins'); finishRecorded = true; }
+    } else {
+      statusEl.textContent = 'Вы проиграли';
+      if (!finishRecorded) { TT.playSound('lose'); TT.recordResult('losses'); finishRecorded = true; }
+    }
+  } else {
+    TT.$('new-game').disabled = true;
+    over = false;
+    statusEl.textContent = r.turn === myMark ? 'Ваш ход' : 'Ход соперника…';
+  }
+}
+
+function onCellOnline(i) {
+  if (!room || room.status !== 'active' || over) return;
+  if (room.turn !== myMark || boardArr[i]) return;
+  var newBoard = boardArr.slice();
+  newBoard[i] = myMark;
+  var w = TT.winnerOf(newBoard);
+  var full = newBoard.every(Boolean);
+  var upd = {
+    board: newBoard,
+    turn: myMark === 'X' ? 'O' : 'X',
+    updated_at: new Date().toISOString()
+  };
+  if (w) { upd.status = 'finished'; upd.winner = myMark; }
+  else if (full) { upd.status = 'finished'; upd.winner = 'draw'; }
+  TT.sb.from('game_rooms').update(upd).eq('code', room.code).then(function () {});
+  renderRoom(Object.assign({}, room, upd));
+}
+
+function rematch() {
+  if (!room || room.status !== 'finished' || !TT.sb) return;
+  finishRecorded = false;
+  var upd = { board: ['', '', '', '', '', '', '', '', ''], turn: 'X', status: 'active', winner: null, updated_at: new Date().toISOString() };
+  TT.sb.from('game_rooms').update(upd).eq('code', room.code).then(function () {});
+  renderRoom(Object.assign({}, room, upd));
+}
+
+function leaveRoom() {
+  var r = room;
+  if (channel && TT.sb) TT.sb.removeChannel(channel);
+  channel = null;
+  room = null;
+  if (TT.sb && r) {
+    if (r.host_id === TT.currentUser.id) {
+      TT.sb.from('game_rooms').delete().eq('code', r.code).then(function () {});
+    } else {
+      TT.sb.from('game_rooms').update({
+        guest_id: null, guest_name: null, status: 'waiting',
+        board: ['', '', '', '', '', '', '', '', ''], turn: 'X', winner: null
+      }).eq('code', r.code).then(function () {});
+    }
+  }
+  location.href = 'online.html';
+}
+
+/* ---------- запуск ---------- */
+TT.requireSession(function () {
+  document.body.classList.add('ready');
+  statusEl = TT.$('status');
+  boardCtl = TT.createBoard(TT.$('board'), onCellOnline);
+  TT.renderUserChip();
+  TT.wireSoundToggle(TT.$('sound-toggle'));
+  TT.$('new-game').addEventListener('click', rematch);
+  TT.$('leave-link').addEventListener('click', function (e) {
+    e.preventDefault();
+    leaveRoom();
+  });
+  TT.$('btn-copy').addEventListener('click', function () {
+    var link = location.origin + location.pathname + '?room=' + roomCode;
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(link).then(function () {
+        TT.$('btn-copy').textContent = 'Скопировано!';
+        setTimeout(function () { TT.$('btn-copy').textContent = 'Копировать ссылку'; }, 1500);
+      });
+    }
+  });
+
+  if (TT.DEMO) {
+    myMark = 'X';
+    renderRoom({
+      code: roomCode || 'K7M2P9', host_id: 'demo-user', host_name: 'Игрок',
+      guest_id: 'demo2', guest_name: 'Аня',
+      board: ['O', '', 'O', '', 'X', '', 'X', '', ''], turn: 'O', status: 'active', winner: null
+    });
+    return;
+  }
+
+  if (!/^[A-Z2-9]{6}$/.test(roomCode)) {
+    statusEl.textContent = 'Некорректный код комнаты — вернитесь в лобби.';
+    return;
+  }
+
+  TT.sb.from('game_rooms').select('*').eq('code', roomCode).maybeSingle()
+    .then(function (res) {
+      if (res.error || !res.data) {
+        statusEl.textContent = 'Комната не найдена — вернитесь в лобби.';
+        return;
+      }
+      var r = res.data;
+      if (r.host_id === TT.currentUser.id) { myMark = 'X'; subscribeRoom(roomCode); renderRoom(r); return; }
+      if (r.guest_id === TT.currentUser.id) { myMark = 'O'; subscribeRoom(roomCode); renderRoom(r); return; }
+      if (!r.guest_id) {
+        TT.sb.from('game_rooms')
+          .update({ guest_id: TT.currentUser.id, guest_name: TT.displayName, status: 'active' })
+          .eq('code', roomCode)
+          .then(function (up) {
+            if (up.error) { statusEl.textContent = 'Не удалось присоединиться: ' + up.error.message; return; }
+            myMark = 'O';
+            subscribeRoom(roomCode);
+            renderRoom(Object.assign({}, r, { guest_id: TT.currentUser.id, guest_name: TT.displayName, status: 'active' }));
+          });
+        return;
+      }
+      statusEl.textContent = 'В комнате уже два игрока.';
+    });
+});
+})();
+</script>
+</body>
+</html>

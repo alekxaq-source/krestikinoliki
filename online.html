@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Игра по сети — Крестики-нолики</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<link rel="stylesheet" href="style.css" />
+</head>
+<body class="gate">
+
+<header class="top">
+  <a class="brand brand-link" href="menu.html">
+    <svg width="30" height="30" viewBox="0 0 30 30" fill="none" aria-hidden="true">
+      <path d="M5 5 L13 13 M13 5 L5 13" stroke="#5E9FE8" stroke-width="2.6" stroke-linecap="round"/>
+      <circle cx="19.5" cy="19.5" r="6.5" stroke="#DE9255" stroke-width="2.6"/>
+    </svg>
+    <span>
+      <div class="brand-title">Крестики-нолики</div>
+      <div class="brand-sub">на Supabase</div>
+    </span>
+  </a>
+  <nav class="nav">
+    <a href="menu.html">Меню</a>
+    <a href="leaderboard.html">Лидеры</a>
+  </nav>
+  <div id="user-chip" class="chip" hidden>
+    <span class="avatar" id="avatar">И</span>
+    <span class="who" id="user-name">Игрок</span>
+    <button id="sign-out" class="btn ghost small" type="button">Выйти</button>
+  </div>
+</header>
+
+<main class="page">
+  <a class="back-link" href="modes.html">← К выбору режима</a>
+  <div class="card">
+    <h1 class="page-title">Игра по сети</h1>
+    <p class="muted" style="margin-bottom:16px;">Создайте комнату и отправьте другу код или ссылку — либо войдите в комнату по коду.</p>
+
+    <button id="btn-create" class="btn primary" style="width:100%" type="button">Создать комнату</button>
+
+    <div style="display:flex; align-items:center; gap:12px; margin:18px 0; color:var(--faint); font-size:13px;">
+      <span style="flex:1; border-top:1px solid var(--border);"></span>
+      или
+      <span style="flex:1; border-top:1px solid var(--border);"></span>
+    </div>
+
+    <div class="join-row">
+      <input id="join-code" type="text" maxlength="6" placeholder="КОД КОМНАТЫ" aria-label="Код комнаты" />
+      <button id="btn-join" class="btn primary" type="button">Войти</button>
+    </div>
+
+    <div id="online-msg" class="msg" hidden></div>
+  </div>
+</main>
+
+<script src="app.js"></script>
+<script>
+TT.requireSession(function () {
+  document.body.classList.add('ready');
+  TT.renderUserChip();
+
+  var msg = TT.$('online-msg');
+  function showMsg(t, k) { msg.textContent = t; msg.className = 'msg ' + k; msg.hidden = false; }
+  function hideMsg() { msg.hidden = true; }
+
+  function genCode() {
+    var chars = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+    var s = '';
+    for (var i = 0; i < 6; i++) s += chars[Math.floor(Math.random() * chars.length)];
+    return s;
+  }
+
+  TT.$('btn-create').addEventListener('click', function () {
+    hideMsg();
+    if (TT.DEMO) { location.href = 'play-online.html?room=K7M2P9&demo=1'; return; }
+    var btn = TT.$('btn-create');
+    btn.disabled = true; btn.textContent = 'Создаём…';
+    var code = genCode();
+    TT.sb.from('game_rooms').insert({ code: code, host_id: TT.currentUser.id, host_name: TT.displayName })
+      .then(function (res) {
+        if (res.error) {
+          btn.disabled = false; btn.textContent = 'Создать комнату';
+          return showMsg('Не удалось создать комнату: ' + res.error.message, 'error');
+        }
+        location.href = 'play-online.html?room=' + code;
+      });
+  });
+
+  function join() {
+    hideMsg();
+    var code = TT.$('join-code').value.trim().toUpperCase();
+    if (code.length !== 6) return showMsg('Введите 6-символьный код комнаты.', 'error');
+    if (TT.DEMO) { location.href = 'play-online.html?room=' + code + '&demo=1'; return; }
+    TT.sb.from('game_rooms').select('*').eq('code', code).maybeSingle()
+      .then(function (res) {
+        if (res.error || !res.data) return showMsg('Комната не найдена. Проверьте код.', 'error');
+        var r = res.data;
+        if (r.host_id === TT.currentUser.id || r.guest_id === TT.currentUser.id || !r.guest_id) {
+          location.href = 'play-online.html?room=' + code;
+        } else {
+          showMsg('В комнате уже есть два игрока.', 'error');
+        }
+      });
+  }
+  TT.$('btn-join').addEventListener('click', join);
+  TT.$('join-code').addEventListener('keydown', function (e) {
+    if (e.key === 'Enter') { e.preventDefault(); join(); }
+  });
+});
+</script>
+</body>
+</html>

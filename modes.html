@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Выбор режима — Крестики-нолики</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<link rel="stylesheet" href="style.css" />
+</head>
+<body class="gate">
+
+<header class="top">
+  <a class="brand brand-link" href="menu.html">
+    <svg width="30" height="30" viewBox="0 0 30 30" fill="none" aria-hidden="true">
+      <path d="M5 5 L13 13 M13 5 L5 13" stroke="#5E9FE8" stroke-width="2.6" stroke-linecap="round"/>
+      <circle cx="19.5" cy="19.5" r="6.5" stroke="#DE9255" stroke-width="2.6"/>
+    </svg>
+    <span>
+      <div class="brand-title">Крестики-нолики</div>
+      <div class="brand-sub">на Supabase</div>
+    </span>
+  </a>
+  <nav class="nav">
+    <a href="menu.html" class="active">Меню</a>
+    <a href="leaderboard.html">Лидеры</a>
+  </nav>
+  <div id="user-chip" class="chip" hidden>
+    <span class="avatar" id="avatar">И</span>
+    <span class="who" id="user-name">Игрок</span>
+    <button id="sign-out" class="btn ghost small" type="button">Выйти</button>
+  </div>
+</header>
+
+<main class="page">
+  <a class="back-link" href="menu.html">← Назад в меню</a>
+  <h1 class="page-title">Выберите режим</h1>
+  <div class="stack">
+    <div>
+      <button class="mode-card" id="card-ai" type="button" aria-expanded="false">
+        <span class="emoji">🤖</span>
+        <span>
+          <span class="t">С компьютером</span><br />
+          <span class="d">Три уровня сложности</span>
+        </span>
+        <span class="arrow">›</span>
+      </button>
+      <div class="diff-row" id="diff-row" hidden style="margin-top:10px;">
+        <button class="btn ghost" data-diff="easy" type="button">Лёгкий</button>
+        <button class="btn ghost" data-diff="medium" type="button">Средний</button>
+        <button class="btn primary" data-diff="hard" type="button">Сложный</button>
+      </div>
+    </div>
+
+    <a class="mode-card" href="game.html?mode=local">
+      <span class="emoji">👥</span>
+      <span>
+        <span class="t">Вдвоём</span><br />
+        <span class="d">Два игрока на одном экране</span>
+      </span>
+      <span class="arrow">›</span>
+    </a>
+
+    <a class="mode-card" href="online.html">
+      <span class="emoji">🌐</span>
+      <span>
+        <span class="t">По сети</span><br />
+        <span class="d">С другом по коду комнаты или ссылке</span>
+      </span>
+      <span class="arrow">›</span>
+    </a>
+  </div>
+</main>
+
+<script src="app.js"></script>
+<script>
+TT.requireSession(function () {
+  document.body.classList.add('ready');
+  TT.renderUserChip();
+  var row = TT.$('diff-row');
+  var card = TT.$('card-ai');
+  card.addEventListener('click', function () {
+    row.hidden = !row.hidden;
+    card.setAttribute('aria-expanded', String(!row.hidden));
+  });
+  row.querySelectorAll('button').forEach(function (b) {
+    b.addEventListener('click', function () {
+      location.href = 'game.html?mode=ai&difficulty=' + b.getAttribute('data-diff');
+    });
+  });
+});
+</script>
+</body>
+</html>

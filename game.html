@@ -1,0 +1,236 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Игра — Крестики-нолики</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<link rel="stylesheet" href="style.css" />
+</head>
+<body class="gate">
+
+<header class="top">
+  <a class="brand brand-link" href="menu.html">
+    <svg width="30" height="30" viewBox="0 0 30 30" fill="none" aria-hidden="true">
+      <path d="M5 5 L13 13 M13 5 L5 13" stroke="#5E9FE8" stroke-width="2.6" stroke-linecap="round"/>
+      <circle cx="19.5" cy="19.5" r="6.5" stroke="#DE9255" stroke-width="2.6"/>
+    </svg>
+    <span>
+      <div class="brand-title">Крестики-нолики</div>
+      <div class="brand-sub">на Supabase</div>
+    </span>
+  </a>
+  <nav class="nav">
+    <a href="menu.html">Меню</a>
+    <a href="leaderboard.html">Лидеры</a>
+  </nav>
+  <div id="user-chip" class="chip" hidden>
+    <span class="avatar" id="avatar">И</span>
+    <span class="who" id="user-name">Игрок</span>
+    <button id="sign-out" class="btn ghost small" type="button">Выйти</button>
+  </div>
+</header>
+
+<main class="page">
+  <a class="back-link" href="modes.html">← К выбору режима</a>
+  <div class="stack">
+    <div class="card board-card">
+      <h1 class="page-title" id="page-title">Против компьютера</h1>
+      <div id="status" class="status" aria-live="polite">Ваш ход</div>
+      <div id="board" class="board"></div>
+      <div class="btn-row">
+        <button id="new-game" class="btn primary grow" type="button">Новая игра</button>
+        <button id="sound-toggle" class="btn ghost icon" type="button" title="Звук вкл/выкл" aria-label="Переключить звук">🔊</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Ваша статистика</h2>
+      <div class="stats">
+        <div class="stat"><div class="stat-num green" id="st-wins">0</div><div class="stat-label">Победы</div></div>
+        <div class="stat"><div class="stat-num" id="st-draws" style="color:var(--muted)">0</div><div class="stat-label">Ничьи</div></div>
+        <div class="stat"><div class="stat-num red" id="st-losses">0</div><div class="stat-label">Поражения</div></div>
+      </div>
+    </div>
+  </div>
+</main>
+
+<script src="app.js"></script>
+<script>
+(function () {
+'use strict';
+
+var mode = TT.param('mode') === 'local' ? 'local' : 'ai';
+var difficulty = ['easy', 'medium', 'hard'].indexOf(TT.param('difficulty')) >= 0 ? TT.param('difficulty') : 'hard';
+
+var boardArr = ['', '', '', '', '', '', '', '', ''];
+var current = 'X';
+var over = false;
+var aiThinking = false;
+var boardCtl = null;
+var statusEl = null;
+
+var DIFF_NAMES = { easy: 'Лёгкий', medium: 'Средний', hard: 'Сложный' };
+
+function updateStatus() {
+  if (mode === 'ai') {
+    statusEl.textContent = current === 'X' ? 'Ваш ход' : 'Ход компьютера…';
+  } else {
+    statusEl.textContent = current === 'X' ? 'Ходят крестики' : 'Ходят нолики';
+  }
+}
+
+function resetGame() {
+  boardArr = ['', '', '', '', '', '', '', '', ''];
+  current = 'X';
+  over = false;
+  aiThinking = false;
+  boardCtl.clear();
+  updateStatus();
+}
+
+function finish(w) {
+  over = true;
+  if (!w.player) {
+    statusEl.textContent = 'Ничья!';
+    TT.playSound('draw');
+    if (mode === 'ai') TT.recordResult('draws');
+    return;
+  }
+  boardCtl.highlight(w.line, w.player);
+  if (mode === 'ai') {
+    if (w.player === 'X') { statusEl.textContent = 'Вы победили! 🎉'; TT.playSound('win'); TT.recordResult('wins'); }
+    else { statusEl.textContent = 'Компьютер победил'; TT.playSound('lose'); TT.recordResult('losses'); }
+  } else {
+    statusEl.textContent = w.player === 'X' ? 'Победили крестики! 🎉' : 'Победили нолики! 🎉';
+    TT.playSound('win');
+  }
+}
+
+function onCell(i) {
+  if (over || aiThinking || boardArr[i]) return;
+  boardArr[i] = current;
+  boardCtl.place(i, current);
+  var w = TT.winnerOf(boardArr);
+  if (w) return finish(w);
+  if (boardArr.every(Boolean)) return finish({ player: null });
+  current = current === 'X' ? 'O' : 'X';
+  updateStatus();
+  if (mode === 'ai' && current === 'O') {
+    aiThinking = true;
+    setTimeout(function () {
+      var m = aiMove();
+      if (m >= 0) { boardArr[m] = 'O'; boardCtl.place(m, 'O'); }
+      aiThinking = false;
+      var w2 = TT.winnerOf(boardArr);
+      if (w2) return finish(w2);
+      if (boardArr.every(Boolean)) return finish({ player: null });
+      current = 'X';
+      updateStatus();
+    }, 450);
+  }
+}
+
+/* ---------- ИИ ---------- */
+function aiMove() {
+  if (difficulty === 'easy') return randomMove();
+  if (difficulty === 'medium') return mediumMove();
+  return bestMove();
+}
+
+function randomMove() {
+  var empty = [];
+  for (var i = 0; i < 9; i++) if (!boardArr[i]) empty.push(i);
+  if (!empty.length) return -1;
+  return empty[Math.floor(Math.random() * empty.length)];
+}
+
+function findWinning(mark) {
+  for (var i = 0; i < 9; i++) {
+    if (!boardArr[i]) {
+      boardArr[i] = mark;
+      var w = TT.winnerOf(boardArr);
+      boardArr[i] = '';
+      if (w) return i;
+    }
+  }
+  return -1;
+}
+
+function mediumMove() {
+  var m = findWinning('O');
+  if (m >= 0) return m;
+  m = findWinning('X');
+  if (m >= 0) return m;
+  if (Math.random() < 0.55) return randomMove();
+  return bestMove();
+}
+
+function bestMove() {
+  var best = -Infinity, move = -1;
+  for (var i = 0; i < 9; i++) {
+    if (!boardArr[i]) {
+      boardArr[i] = 'O';
+      var score = minimax(boardArr, 0, false);
+      boardArr[i] = '';
+      if (score > best) { best = score; move = i; }
+    }
+  }
+  return move;
+}
+
+function minimax(b, depth, isMax) {
+  var w = TT.winnerOf(b);
+  if (w) return w.player === 'O' ? 10 - depth : depth - 10;
+  if (b.every(Boolean)) return 0;
+  var i, score;
+  if (isMax) {
+    var best = -Infinity;
+    for (i = 0; i < 9; i++) if (!b[i]) {
+      b[i] = 'O';
+      score = minimax(b, depth + 1, false);
+      b[i] = '';
+      if (score > best) best = score;
+    }
+    return best;
+  }
+  var worst = Infinity;
+  for (i = 0; i < 9; i++) if (!b[i]) {
+    b[i] = 'X';
+    score = minimax(b, depth + 1, true);
+    b[i] = '';
+    if (score < worst) worst = score;
+  }
+  return worst;
+}
+
+/* ---------- запуск ---------- */
+TT.requireSession(function () {
+  document.body.classList.add('ready');
+  statusEl = TT.$('status');
+  boardCtl = TT.createBoard(TT.$('board'), onCell);
+
+  TT.$('page-title').textContent = mode === 'ai'
+    ? 'Против компьютера · ' + DIFF_NAMES[difficulty]
+    : 'Игра вдвоём';
+  document.title = TT.$('page-title').textContent + ' — Крестики-нолики';
+
+  TT.renderUserChip();
+  TT.loadStats();
+  TT.wireSoundToggle(TT.$('sound-toggle'));
+  TT.$('new-game').addEventListener('click', resetGame);
+
+  resetGame();
+
+  if (TT.DEMO) {
+    boardArr[4] = 'X'; boardCtl.place(4, 'X', true);
+    boardArr[0] = 'O'; boardCtl.place(0, 'O', true);
+    boardArr[8] = 'X'; boardCtl.place(8, 'X', true);
+    boardArr[2] = 'O'; boardCtl.place(2, 'O', true);
+    updateStatus();
+  }
+});
+})();
+</script>
+</body>
+</html>

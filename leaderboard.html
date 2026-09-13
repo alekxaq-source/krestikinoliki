@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Лидеры — Крестики-нолики</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<link rel="stylesheet" href="style.css" />
+</head>
+<body class="gate">
+
+<header class="top">
+  <a class="brand brand-link" href="menu.html">
+    <svg width="30" height="30" viewBox="0 0 30 30" fill="none" aria-hidden="true">
+      <path d="M5 5 L13 13 M13 5 L5 13" stroke="#5E9FE8" stroke-width="2.6" stroke-linecap="round"/>
+      <circle cx="19.5" cy="19.5" r="6.5" stroke="#DE9255" stroke-width="2.6"/>
+    </svg>
+    <span>
+      <div class="brand-title">Крестики-нолики</div>
+      <div class="brand-sub">на Supabase</div>
+    </span>
+  </a>
+  <nav class="nav">
+    <a href="menu.html">Меню</a>
+    <a href="leaderboard.html" class="active">Лидеры</a>
+  </nav>
+  <div id="user-chip" class="chip" hidden>
+    <span class="avatar" id="avatar">И</span>
+    <span class="who" id="user-name">Игрок</span>
+    <button id="sign-out" class="btn ghost small" type="button">Выйти</button>
+  </div>
+</header>
+
+<main class="page">
+  <a class="back-link" href="menu.html">← Назад в меню</a>
+  <div class="stack">
+    <div class="card">
+      <h2>Ваша статистика</h2>
+      <div class="stats">
+        <div class="stat"><div class="stat-num green" id="st-wins">0</div><div class="stat-label">Победы</div></div>
+        <div class="stat"><div class="stat-num" id="st-draws" style="color:var(--muted)">0</div><div class="stat-label">Ничьи</div></div>
+        <div class="stat"><div class="stat-num red" id="st-losses">0</div><div class="stat-label">Поражения</div></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Таблица лидеров</h2>
+      <ol id="leaderboard" class="board-list"></ol>
+      <p class="empty" id="lb-empty" hidden>Пока никто не побеждал — станьте первым!</p>
+    </div>
+  </div>
+</main>
+
+<script src="app.js"></script>
+<script>
+TT.requireSession(function () {
+  document.body.classList.add('ready');
+  TT.renderUserChip();
+  TT.loadStats();
+  TT.loadLeaderboard(TT.$('leaderboard'), TT.$('lb-empty'), 20);
+});
+</script>
+</body>
+</html>

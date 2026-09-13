@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Меню — Крестики-нолики</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<link rel="stylesheet" href="style.css" />
+</head>
+<body class="gate">
+
+<header class="top">
+  <a class="brand brand-link" href="menu.html">
+    <svg width="30" height="30" viewBox="0 0 30 30" fill="none" aria-hidden="true">
+      <path d="M5 5 L13 13 M13 5 L5 13" stroke="#5E9FE8" stroke-width="2.6" stroke-linecap="round"/>
+      <circle cx="19.5" cy="19.5" r="6.5" stroke="#DE9255" stroke-width="2.6"/>
+    </svg>
+    <span>
+      <div class="brand-title">Крестики-нолики</div>
+      <div class="brand-sub">на Supabase</div>
+    </span>
+  </a>
+  <nav class="nav">
+    <a href="menu.html" class="active">Меню</a>
+    <a href="leaderboard.html">Лидеры</a>
+  </nav>
+  <div id="user-chip" class="chip" hidden>
+    <span class="avatar" id="avatar">И</span>
+    <span class="who" id="user-name">Игрок</span>
+    <button id="sign-out" class="btn ghost small" type="button">Выйти</button>
+  </div>
+</header>
+
+<main class="page">
+  <div class="stack">
+    <div class="card" style="text-align:center; padding:32px 24px;">
+      <p class="greet">Привет, <span id="greet-name">Игрок</span>! 👋</p>
+      <p class="muted" style="margin-bottom:20px;">Готовы сыграть партию?</p>
+      <a class="btn primary big-link" href="modes.html">▶ Играть</a>
+      <a class="btn ghost ghost-link" href="leaderboard.html">Таблица лидеров</a>
+    </div>
+
+    <div class="card">
+      <h2>Ваша статистика</h2>
+      <div class="stats">
+        <div class="stat"><div class="stat-num green" id="st-wins">0</div><div class="stat-label">Победы</div></div>
+        <div class="stat"><div class="stat-num" id="st-draws" style="color:var(--muted)">0</div><div class="stat-label">Ничьи</div></div>
+        <div class="stat"><div class="stat-num red" id="st-losses">0</div><div class="stat-label">Поражения</div></div>
+      </div>
+    </div>
+  </div>
+</main>
+
+<script src="app.js"></script>
+<script>
+TT.requireSession(function () {
+  document.body.classList.add('ready');
+  TT.renderUserChip();
+  TT.$('greet-name').textContent = TT.displayName;
+  TT.loadStats();
+});
+</script>
+</body>
+</html>

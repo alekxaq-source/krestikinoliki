@@ -35,7 +35,7 @@
   <a class="back-link" href="modes.html">← К выбору режима</a>
   <div class="card">
     <h1 class="page-title">Игра по сети</h1>
-    <p class="muted" style="margin-bottom:16px;">Создайте комнату и отправьте другу код или ссылку — либо войдите в комнату по коду.</p>
+    <p class="muted" style="margin-bottom:16px;">Создайте комнату и отправьте другу ссылку — код вводить не нужно. Или войдите в комнату, вставив код или ссылку-приглашение.</p>
 
     <button id="btn-create" class="btn primary" style="width:100%" type="button">Создать комнату</button>
 
@@ -46,7 +46,7 @@
     </div>
 
     <div class="join-row">
-      <input id="join-code" type="text" maxlength="6" placeholder="КОД КОМНАТЫ" aria-label="Код комнаты" />
+      <input id="join-code" type="text" maxlength="200" placeholder="Код или ссылка" aria-label="Код комнаты или ссылка-приглашение" />
       <button id="btn-join" class="btn primary" type="button">Войти</button>
     </div>
 
@@ -71,6 +71,14 @@ TT.requireSession(function () {
     return s;
   }
 
+  function extractCode(raw) {
+    raw = (raw || '').trim();
+    var m = raw.match(/room=([A-Za-z0-9]{6})/);
+    if (m) return m[1].toUpperCase();
+    m = raw.toUpperCase().match(/[A-Z2-9]{6}/);
+    return m ? m[0] : '';
+  }
+
   TT.$('btn-create').addEventListener('click', function () {
     hideMsg();
     if (TT.DEMO) { location.href = 'play-online.html?room=K7M2P9&demo=1'; return; }
@@ -89,14 +97,17 @@ TT.requireSession(function () {
 
   function join() {
     hideMsg();
-    var code = TT.$('join-code').value.trim().toUpperCase();
-    if (code.length !== 6) return showMsg('Введите 6-символьный код комнаты.', 'error');
+    var code = extractCode(TT.$('join-code').value);
+    if (!/^[A-Z2-9]{6}$/.test(code)) return showMsg('Введите 6-символьный код комнаты или вставьте ссылку-приглашение целиком.', 'error');
     if (TT.DEMO) { location.href = 'play-online.html?room=' + code + '&demo=1'; return; }
     TT.sb.from('game_rooms').select('*').eq('code', code).maybeSingle()
       .then(function (res) {
         if (res.error || !res.data) return showMsg('Комната не найдена. Проверьте код.', 'error');
         var r = res.data;
-        if (r.host_id === TT.currentUser.id || r.guest_id === TT.currentUser.id || !r.guest_id) {
+        if (r.host_id === TT.currentUser.id) {
+          return showMsg('Это ваша комната — отправьте код или ссылку другу. Если вы уже в партии, вернитесь на её страницу из истории браузера.', 'info');
+        }
+        if (r.guest_id === TT.currentUser.id || !r.guest_id) {
           location.href = 'play-online.html?room=' + code;
         } else {
           showMsg('В комнате уже есть два игрока.', 'error');

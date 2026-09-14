@@ -41,6 +41,7 @@
         <span class="code" id="room-code">······</span>
         <button id="btn-copy" class="btn ghost small" type="button">Копировать ссылку</button>
       </div>
+      <p class="fine" style="margin:0 0 12px; text-align:center;">Отправьте другу ссылку — код вводить не нужно.</p>
       <div class="opponent">
         <span>Соперник: <b id="opponent-name">ждём…</b></span>
         <span style="color:var(--faint); font-size:13px;">вы играете за <b id="my-mark" style="color:var(--muted)">—</b></span>
@@ -181,6 +182,17 @@ function leaveRoom() {
   location.href = 'online.html';
 }
 
+function legacyCopy(t) {
+  var ta = document.createElement('textarea');
+  ta.value = t;
+  ta.style.position = 'fixed';
+  ta.style.opacity = '0';
+  document.body.appendChild(ta);
+  ta.select();
+  try { document.execCommand('copy'); } catch (e) { window.prompt('Скопируйте ссылку вручную:', t); }
+  document.body.removeChild(ta);
+}
+
 /* ---------- запуск ---------- */
 TT.requireSession(function () {
   document.body.classList.add('ready');
@@ -194,12 +206,17 @@ TT.requireSession(function () {
     leaveRoom();
   });
   TT.$('btn-copy').addEventListener('click', function () {
+    var btn = TT.$('btn-copy');
     var link = location.origin + location.pathname + '?room=' + roomCode;
+    var done = function () {
+      btn.textContent = 'Скопировано!';
+      setTimeout(function () { btn.textContent = 'Копировать ссылку'; }, 1500);
+    };
     if (navigator.clipboard && navigator.clipboard.writeText) {
-      navigator.clipboard.writeText(link).then(function () {
-        TT.$('btn-copy').textContent = 'Скопировано!';
-        setTimeout(function () { TT.$('btn-copy').textContent = 'Копировать ссылку'; }, 1500);
-      });
+      navigator.clipboard.writeText(link).then(done, function () { legacyCopy(link); done(); });
+    } else {
+      legacyCopy(link);
+      done();
     }
   });
 
@@ -225,8 +242,20 @@ TT.requireSession(function () {
         return;
       }
       var r = res.data;
-      if (r.host_id === TT.currentUser.id) { myMark = 'X'; subscribeRoom(roomCode); renderRoom(r); return; }
-      if (r.guest_id === TT.currentUser.id) { myMark = 'O'; subscribeRoom(roomCode); renderRoom(r); return; }
+      if (r.host_id === TT.currentUser.id) {
+        myMark = 'X';
+        finishRecorded = (r.status === 'finished');
+        subscribeRoom(roomCode);
+        renderRoom(r);
+        return;
+      }
+      if (r.guest_id === TT.currentUser.id) {
+        myMark = 'O';
+        finishRecorded = (r.status === 'finished');
+        subscribeRoom(roomCode);
+        renderRoom(r);
+        return;
+      }
       if (!r.guest_id) {
         TT.sb.from('game_rooms')
           .update({ guest_id: TT.currentUser.id, guest_name: TT.displayName, status: 'active' })

@@ -1,188 +1,72 @@
-/* Крестики-нолики — общий модуль: Supabase, звук, доска, статистика */
+/* Общие утилиты игры «Крестики-нолики» (Supabase auth, звуки, доска, статистика) */
 (function () {
 'use strict';
 
 var SUPABASE_URL = 'https://myqyylejoucdwqflqflm.supabase.co';
 var SUPABASE_KEY = 'sb_publishable_Hj0qf47fgyaFEsdHDqabmA_QBMn475u';
 
-window.__FORCE_DEMO__ = false;
 var qs = new URLSearchParams(location.search);
-var DEMO = window.__FORCE_DEMO__ || qs.has('demo');
+var DEMO = qs.get('demo') === '1' || (typeof window.__FORCE_DEMO__ !== 'undefined' && window.__FORCE_DEMO__);
 
-var TT = window.TT = {};
-TT.DEMO = DEMO;
+var TT = {
+  sb: null,
+  currentUser: null,
+  displayName: 'Игрок',
+  stats: { wins: 0, draws: 0, losses: 0 },
+  DEMO: DEMO
+};
+window.TT = TT;
+
+TT.$ = function (id) { return document.getElementById(id); };
 TT.param = function (name) { return qs.get(name); };
-TT.sb = null;
-TT.currentUser = null;
-TT.displayName = 'Игрок';
-TT.stats = { wins: 0, draws: 0, losses: 0 };
 
-var $ = function (id) { return document.getElementById(id); };
-TT.$ = $;
-
-TT.escapeHtml = function (s) {
-  return String(s).replace(/[&<>"']/g, function (ch) {
-    return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch];
-  });
-};
-
-/* ---------------- sound ---------------- */
-var soundOn = true;
-try { soundOn = localStorage.getItem('ttt_sound') !== 'off'; } catch (e) {}
-var audioCtx = null;
-
-function ensureAudio() {
-  if (!audioCtx) {
-    var AC = window.AudioContext || window.webkitAudioContext;
-    if (AC) audioCtx = new AC();
-  }
-  if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
-}
-
-function beep(freq, delay, dur, type, vol) {
-  if (!audioCtx) return;
-  var t = audioCtx.currentTime + delay;
-  var osc = audioCtx.createOscillator();
-  var gain = audioCtx.createGain();
-  osc.type = type || 'sine';
-  osc.frequency.value = freq;
-  gain.gain.setValueAtTime(0, t);
-  gain.gain.linearRampToValueAtTime(vol || 0.15, t + 0.01);
-  gain.gain.exponentialRampToValueAtTime(0.001, t + dur);
-  osc.connect(gain);
-  gain.connect(audioCtx.destination);
-  osc.start(t);
-  osc.stop(t + dur + 0.02);
-}
-
-TT.playSound = function (name) {
-  if (!soundOn) return;
-  ensureAudio();
-  if (!audioCtx) return;
-  if (name === 'x') beep(640, 0, 0.09, 'triangle', 0.18);
-  else if (name === 'o') beep(430, 0, 0.09, 'triangle', 0.18);
-  else if (name === 'win') { beep(523, 0, 0.12, 'sine', 0.2); beep(659, 0.12, 0.12, 'sine', 0.2); beep(784, 0.24, 0.22, 'sine', 0.22); }
-  else if (name === 'lose') { beep(392, 0, 0.14, 'sine', 0.16); beep(311, 0.14, 0.14, 'sine', 0.16); beep(233, 0.28, 0.26, 'sine', 0.16); }
-  else if (name === 'draw') { beep(440, 0, 0.12, 'sine', 0.15); beep(440, 0.16, 0.2, 'sine', 0.15); }
-};
-
-TT.wireSoundToggle = function (btn) {
-  function render() { btn.textContent = soundOn ? '🔊' : '🔇'; }
-  btn.addEventListener('click', function () {
-    soundOn = !soundOn;
-    try { localStorage.setItem('ttt_sound', soundOn ? 'on' : 'off'); } catch (e) {}
-    render();
-    if (soundOn) TT.playSound('x');
-  });
-  render();
-};
-
-/* ---------------- supabase & auth ---------------- */
-TT.initSupabase = function () {
-  if (TT.sb) return true;
-  if (!window.supabase) return false;
+function initSupabase() {
+  if (TT.sb || DEMO) return TT.sb;
+  if (!window.supabase) return null;
   TT.sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
-  return true;
-};
-
-function fillUser(session) {
-  TT.currentUser = session.user;
-  var meta = TT.currentUser.user_metadata || {};
-  TT.displayName = meta.display_name || String(TT.currentUser.email || 'Игрок').split('@')[0];
+  return TT.sb;
 }
 
-TT.mapError = function (message) {
-  var m = String(message || '').toLowerCase();
-  if (m.indexOf('invalid login') >= 0) return 'Неверный email или пароль.';
-  if (m.indexOf('already registered') >= 0 || m.indexOf('already been registered') >= 0) return 'Этот email уже зарегистрирован — попробуйте войти.';
-  if (m.indexOf('at least 6') >= 0) return 'Пароль должен быть не короче 6 символов.';
-  if (m.indexOf('invalid email') >= 0 || m.indexOf('unable to validate') >= 0) return 'Проверьте правильность email.';
-  if (m.indexOf('email not confirmed') >= 0) return 'Email ещё не подтверждён — загляните в почту.';
-  if (m.indexOf('rate limit') >= 0) return 'Слишком много попыток. Подождите минуту и повторите.';
-  return 'Ошибка: ' + message;
-};
+/* ---------- авторизация ---------- */
 
-/* Логика страницы входа: вкладки, формы, редирект в меню при сессии */
-TT.initAuthPage = function (hooks) {
-  hooks = hooks || {};
-  var msgEl = $('auth-msg');
-  function showMsg(t, k) { msgEl.textContent = t; msgEl.className = 'msg ' + k; msgEl.hidden = false; }
-  function hideMsg() { msgEl.hidden = true; }
+function fakeDemoSession() {
+  TT.currentUser = { id: 'demo-user', email: 'demo@example.com' };
+  TT.displayName = 'Игрок';
+}
 
-  document.querySelectorAll('.tab').forEach(function (tab) {
-    tab.addEventListener('click', function () {
-      document.querySelectorAll('.tab').forEach(function (t) { t.classList.remove('active'); });
-      tab.classList.add('active');
-      var target = tab.getAttribute('data-tab');
-      $('form-signin').hidden = target !== 'signin';
-      $('form-signup').hidden = target !== 'signup';
-      hideMsg();
-    });
-  });
+function pageWithQuery() {
+  var page = location.pathname.split('/').pop() || 'index.html';
+  return page + location.search;
+}
 
-  if (DEMO) return;
-  if (!TT.initSupabase()) {
-    if (hooks.onNoSdk) hooks.onNoSdk();
+function nextTarget() {
+  var n = qs.get('next');
+  if (n && /^[a-z0-9-]+\.html(\?[a-z0-9=&%._-]*)?$/i.test(n)) return n;
+  return 'menu.html';
+}
+
+TT.initAuthPage = function (opts) {
+  opts = opts || {};
+  if (!initSupabase()) {
+    if (opts.onNoSdk) opts.onNoSdk();
     return;
   }
-
+  wireTabs();
+  wireSignIn();
+  wireSignUp();
   TT.sb.auth.getSession().then(function (res) {
-    if (res.data && res.data.session) location.replace('menu.html');
-  });
-  TT.sb.auth.onAuthStateChange(function (event, session) {
-    if (session) location.replace('menu.html');
-  });
-
-  $('form-signin').addEventListener('submit', function (e) {
-    e.preventDefault();
-    hideMsg();
-    var btn = $('si-btn');
-    btn.disabled = true; btn.textContent = 'Входим…';
-    TT.sb.auth.signInWithPassword({ email: $('si-email').value.trim(), password: $('si-pass').value })
-      .then(function (res) {
-        btn.disabled = false; btn.textContent = 'Войти';
-        if (res.error) showMsg(TT.mapError(res.error.message), 'error');
-      });
-  });
-
-  $('form-signup').addEventListener('submit', function (e) {
-    e.preventDefault();
-    hideMsg();
-    var name = $('su-name').value.trim() || 'Игрок';
-    var email = $('su-email').value.trim();
-    var btn = $('su-btn');
-    btn.disabled = true; btn.textContent = 'Создаём…';
-    TT.sb.auth.signUp({
-      email: email,
-      password: $('su-pass').value,
-      options: { data: { display_name: name } }
-    }).then(function (res) {
-      btn.disabled = false; btn.textContent = 'Создать аккаунт';
-      if (res.error) {
-        showMsg(TT.mapError(res.error.message), 'error');
-      } else if (res.data && res.data.session) {
-        // вход произойдёт автоматически через onAuthStateChange
-      } else {
-        showMsg('Аккаунт создан! Мы отправили письмо на ' + email + ' — подтвердите адрес и войдите.', 'info');
-      }
-    });
+    if (res.data.session) location.replace(nextTarget());
   });
 };
 
-/* Внутренние страницы: без сессии уходим на вход */
 TT.requireSession = function (onReady) {
-  if (DEMO) {
-    TT.currentUser = { id: 'demo-user' };
-    TT.displayName = 'Игрок';
-    onReady(TT.currentUser);
-    return;
-  }
-  if (!TT.initSupabase()) { location.replace('index.html'); return; }
+  if (DEMO) { fakeDemoSession(); onReady(); return; }
+  if (!initSupabase()) { location.replace('index.html'); return; }
   TT.sb.auth.getSession().then(function (res) {
-    var session = res.data && res.data.session;
-    if (!session) { location.replace('index.html'); return; }
-    fillUser(session);
-    onReady(TT.currentUser);
+    if (!res.data.session) { location.replace('index.html?next=' + encodeURIComponent(pageWithQuery())); return; }
+    TT.currentUser = res.data.session.user;
+    TT.displayName = (TT.currentUser.user_metadata && TT.currentUser.user_metadata.display_name) || TT.currentUser.email || 'Игрок';
+    onReady();
   });
 };
 
@@ -192,88 +76,197 @@ TT.signOut = function () {
 };
 
 TT.renderUserChip = function () {
-  var chip = $('user-chip');
+  var chip = TT.$('user-chip');
   if (!chip) return;
   chip.hidden = false;
-  $('user-name').textContent = TT.displayName;
-  $('avatar').textContent = TT.displayName.trim().charAt(0).toUpperCase() || 'И';
-  if (DEMO) $('sign-out').hidden = true;
-  $('sign-out').addEventListener('click', TT.signOut);
+  TT.$('avatar').textContent = (TT.displayName || '?').trim().charAt(0).toUpperCase() || '?';
+  TT.$('user-name').textContent = TT.displayName;
+  TT.$('sign-out').addEventListener('click', TT.signOut);
 };
 
-/* ---------------- доска ---------------- */
-var LINES = TT.LINES = [[0,1,2],[3,4,5],[6,7,8],[0,3,6],[1,4,7],[2,5,8],[0,4,8],[2,4,6]];
+function showMsg(el, text, kind) {
+  el.textContent = text;
+  el.className = 'msg ' + kind;
+  el.hidden = false;
+}
+
+function wireTabs() {
+  var tabs = document.querySelectorAll('.tab');
+  tabs.forEach(function (t) {
+    t.addEventListener('click', function () {
+      tabs.forEach(function (x) { x.classList.remove('active'); });
+      t.classList.add('active');
+      TT.$('form-signin').hidden = t.getAttribute('data-tab') !== 'signin';
+      TT.$('form-signup').hidden = t.getAttribute('data-tab') !== 'signup';
+      TT.$('auth-msg').hidden = true;
+    });
+  });
+}
+
+function wireSignIn() {
+  TT.$('form-signin').addEventListener('submit', function (e) {
+    e.preventDefault();
+    var btn = TT.$('si-btn');
+    btn.disabled = true; btn.textContent = 'Входим…';
+    TT.sb.auth.signInWithPassword({ email: TT.$('si-email').value.trim(), password: TT.$('si-pass').value })
+      .then(function (res) {
+        if (res.error) {
+          showMsg(TT.$('auth-msg'), humanAuthError(res.error), 'error');
+          btn.disabled = false; btn.textContent = 'Войти';
+        } else {
+          location.replace(nextTarget());
+        }
+      });
+  });
+}
+
+function wireSignUp() {
+  TT.$('form-signup').addEventListener('submit', function (e) {
+    e.preventDefault();
+    var btn = TT.$('su-btn');
+    btn.disabled = true; btn.textContent = 'Создаём…';
+    TT.sb.auth.signUp({
+      email: TT.$('su-email').value.trim(),
+      password: TT.$('su-pass').value,
+      options: { data: { display_name: TT.$('su-name').value.trim() } }
+    }).then(function (res) {
+      if (res.error) {
+        showMsg(TT.$('auth-msg'), humanAuthError(res.error), 'error');
+        btn.disabled = false; btn.textContent = 'Создать аккаунт';
+        return;
+      }
+      if (res.data.session) { location.replace(nextTarget()); return; }
+      showMsg(TT.$('auth-msg'), 'Готово! Мы отправили письмо — подтвердите email и войдите.', 'info');
+      btn.disabled = false; btn.textContent = 'Создать аккаунт';
+    });
+  });
+}
+
+function humanAuthError(err) {
+  var m = (err && err.message) || '';
+  if (/invalid login credentials/i.test(m)) return 'Неверный email или пароль.';
+  if (/already registered|already been registered/i.test(m)) return 'Такой email уже зарегистрирован — попробуйте войти.';
+  if (/at least 6/i.test(m)) return 'Пароль должен быть не короче 6 символов.';
+  if (/valid email/i.test(m)) return 'Похоже, email введён с ошибкой.';
+  if (/email not confirmed/i.test(m)) return 'Email ещё не подтверждён — загляните в почту.';
+  return 'Ошибка: ' + m;
+}
+
+/* ---------- звуки (WebAudio) ---------- */
+var audioCtx = null;
+var SOUND_KEY = 'ttt_sound';
+
+function isMuted() {
+  try { return localStorage.getItem(SOUND_KEY) === '0'; } catch (e) { return false; }
+}
+function tone(freq, dur, delay, type, peak) {
+  var t = audioCtx.currentTime + (delay || 0);
+  var o = audioCtx.createOscillator();
+  var g = audioCtx.createGain();
+  o.type = type || 'sine';
+  o.frequency.value = freq;
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.exponentialRampToValueAtTime(peak || 0.12, t + 0.015);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  o.connect(g).connect(audioCtx.destination);
+  o.start(t); o.stop(t + dur + 0.05);
+}
+TT.playSound = function (name) {
+  if (isMuted()) return;
+  try {
+    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+    if (name === 'x') tone(620, 0.09, 0, 'triangle', 0.1);
+    else if (name === 'o') tone(430, 0.09, 0, 'triangle', 0.1);
+    else if (name === 'win') { tone(523.25, 0.14, 0); tone(659.25, 0.14, 0.13); tone(783.99, 0.3, 0.26); }
+    else if (name === 'lose') { tone(392, 0.16, 0); tone(311.13, 0.16, 0.15); tone(233.08, 0.34, 0.3); }
+    else if (name === 'draw') tone(440, 0.28, 0, 'sine', 0.09);
+  } catch (e) { /* звук недоступен */ }
+};
+TT.wireSoundToggle = function (btn) {
+  if (!btn) return;
+  var paint = function () { btn.textContent = isMuted() ? '🔇' : '🔊'; };
+  btn.addEventListener('click', function () {
+    try { localStorage.setItem(SOUND_KEY, isMuted() ? '1' : '0'); } catch (e) {}
+    paint();
+    if (!isMuted()) TT.playSound('x');
+  });
+  paint();
+};
+
+/* ---------- логика доски ---------- */
+var WIN_LINES = [[0, 1, 2], [3, 4, 5], [6, 7, 8], [0, 3, 6], [1, 4, 7], [2, 5, 8], [0, 4, 8], [2, 4, 6]];
 
 TT.winnerOf = function (b) {
-  for (var k = 0; k < LINES.length; k++) {
-    var a = LINES[k][0], c = LINES[k][1], d = LINES[k][2];
-    if (b[a] && b[a] === b[c] && b[a] === b[d]) return { player: b[a], line: LINES[k] };
+  for (var k = 0; k < WIN_LINES.length; k++) {
+    var L = WIN_LINES[k], a = L[0], c = L[1], d = L[2];
+    if (b[a] && b[a] === b[c] && b[a] === b[d]) return { player: b[a], line: [a, c, d] };
   }
   return null;
 };
 
-function markSVG(mark) {
-  if (mark === 'X') {
-    return '<svg class="mark mark-x" viewBox="0 0 100 100" aria-hidden="true"><line x1="24" y1="24" x2="76" y2="76"/><line x1="76" y1="24" x2="24" y2="76"/></svg>';
-  }
-  return '<svg class="mark mark-o" viewBox="0 0 100 100" aria-hidden="true"><circle cx="50" cy="50" r="28"/></svg>';
-}
+var X_SVG = '<svg class="mark mark-x" viewBox="0 0 100 100" aria-hidden="true"><line x1="25" y1="25" x2="75" y2="75"></line><line x1="75" y1="25" x2="25" y2="75"></line></svg>';
+var O_SVG = '<svg class="mark mark-o" viewBox="0 0 100 100" aria-hidden="true"><circle cx="50" cy="50" r="27"></circle></svg>';
 
 TT.createBoard = function (container, onCell) {
   var cells = [];
   for (var i = 0; i < 9; i++) {
     (function (idx) {
-      var b = document.createElement('button');
-      b.type = 'button';
-      b.className = 'cell';
-      b.setAttribute('aria-label', 'Клетка ' + (idx + 1));
-      b.addEventListener('click', function () { onCell(idx); });
-      container.appendChild(b);
-      cells.push(b);
+      var c = document.createElement('button');
+      c.className = 'cell';
+      c.type = 'button';
+      c.setAttribute('role', 'gridcell');
+      c.addEventListener('click', function () { onCell(idx); });
+      container.appendChild(c);
+      cells.push(c);
     })(i);
   }
   return {
-    cells: cells,
-    place: function (i, mark, silent) {
-      cells[i].innerHTML = markSVG(mark);
-      cells[i].classList.add('filled');
-      cells[i].disabled = true;
-      if (!silent) TT.playSound(mark === 'X' ? 'x' : 'o');
+    place: function (i, mark, instant) {
+      var cell = cells[i];
+      cell.innerHTML = mark === 'X' ? X_SVG : O_SVG;
+      cell.classList.add('filled');
+      cell.disabled = true;
+      if (instant) {
+        var m = cell.firstChild;
+        if (m) m.style.animation = 'none';
+      }
+      TT.playSound(mark === 'X' ? 'x' : 'o');
     },
+    highlight: function (line, player) {
+      line.forEach(function (i) { cells[i].classList.add(player === 'X' ? 'win-x' : 'win-o'); });
+    },
+    disableAll: function () { cells.forEach(function (c) { c.disabled = true; }); },
     clear: function () {
-      cells.forEach(function (c) { c.innerHTML = ''; c.disabled = false; c.className = 'cell'; });
-    },
-    highlight: function (line, mark) {
-      line.forEach(function (idx) { cells[idx].classList.add(mark === 'X' ? 'win-x' : 'win-o'); });
+      cells.forEach(function (c) {
+        c.innerHTML = '';
+        c.disabled = false;
+        c.classList.remove('filled', 'win-x', 'win-o');
+      });
     }
   };
 };
 
-/* ---------------- статистика и лидеры ---------------- */
+/* ---------- статистика и лидеры ---------- */
 TT.renderStats = function () {
-  if ($('st-wins')) $('st-wins').textContent = TT.stats.wins;
-  if ($('st-draws')) $('st-draws').textContent = TT.stats.draws;
-  if ($('st-losses')) $('st-losses').textContent = TT.stats.losses;
+  TT.$('st-wins').textContent = TT.stats.wins;
+  TT.$('st-draws').textContent = TT.stats.draws;
+  TT.$('st-losses').textContent = TT.stats.losses;
 };
 
 TT.loadStats = function () {
   if (DEMO) { TT.stats = { wins: 7, draws: 2, losses: 3 }; TT.renderStats(); return; }
-  if (!TT.sb || !TT.currentUser) return;
   TT.sb.from('game_stats').select('*').eq('user_id', TT.currentUser.id).maybeSingle()
     .then(function (res) {
-      if (res.data) {
-        TT.stats = { wins: res.data.wins, draws: res.data.draws, losses: res.data.losses };
-        TT.renderStats();
-      } else if (!res.error) {
-        return TT.sb.from('game_stats').insert({ user_id: TT.currentUser.id, display_name: TT.displayName });
-      }
+      if (res.data) TT.stats = { wins: res.data.wins, draws: res.data.draws, losses: res.data.losses };
+      TT.renderStats();
     });
 };
 
-TT.recordResult = function (key) {
-  TT.stats[key]++;
+TT.recordResult = function (field) {
+  if (DEMO) { TT.stats[field]++; TT.renderStats(); return; }
+  TT.stats[field]++;
   TT.renderStats();
-  if (DEMO || !TT.sb || !TT.currentUser) return;
   TT.sb.from('game_stats').upsert({
     user_id: TT.currentUser.id,
     display_name: TT.displayName,
@@ -284,38 +277,47 @@ TT.recordResult = function (key) {
   }).then(function () {});
 };
 
-function renderRows(olEl, emptyEl, rows) {
-  olEl.innerHTML = '';
-  if (emptyEl) emptyEl.hidden = rows.length > 0;
-  rows.forEach(function (r, idx) {
-    var li = document.createElement('li');
-    if (r.me) li.className = 'me';
-    li.innerHTML = '<span class="rank">' + (idx + 1) + '</span>' +
-      '<span class="lb-name">' + TT.escapeHtml(r.name) + '</span>' +
-      '<span class="lb-wins">' + r.wins + ' <small>побед</small></span>';
-    olEl.appendChild(li);
-  });
-}
-
-TT.loadLeaderboard = function (olEl, emptyEl, limit) {
+TT.loadLeaderboard = function (listEl, emptyEl, limit) {
   if (DEMO) {
-    renderRows(olEl, emptyEl, [
-      { name: 'Игрок', wins: 7, me: true },
-      { name: 'Аня', wins: 5 },
-      { name: 'Макс', wins: 4 },
-      { name: 'София', wins: 2 },
-      { name: 'Bot', wins: 1 }
-    ]);
+    var demoRows = [
+      { display_name: 'Аня', wins: 12, draws: 3, losses: 4 },
+      { display_name: 'Игрок', wins: 7, draws: 2, losses: 3, me: true },
+      { display_name: 'Макс', wins: 5, draws: 1, losses: 6 }
+    ];
+    paintLeaderboard(demoRows, listEl, emptyEl);
     return;
   }
-  if (!TT.sb) return;
-  TT.sb.from('game_stats').select('user_id, display_name, wins').order('wins', { ascending: false }).limit(limit || 10)
+  TT.sb.from('game_stats').select('display_name,wins,draws,losses,user_id')
+    .order('wins', { ascending: false }).order('losses', { ascending: true }).limit(limit || 20)
     .then(function (res) {
-      if (res.error || !res.data) return;
-      renderRows(olEl, emptyEl, res.data.map(function (r) {
-        return { name: r.display_name, wins: r.wins, me: TT.currentUser && r.user_id === TT.currentUser.id };
-      }));
+      var rows = res.data || [];
+      rows.forEach(function (r) { if (TT.currentUser && r.user_id === TT.currentUser.id) r.me = true; });
+      paintLeaderboard(rows, listEl, emptyEl);
     });
 };
+
+function paintLeaderboard(rows, listEl, emptyEl) {
+  listEl.innerHTML = '';
+  if (!rows.length) { emptyEl.hidden = false; return; }
+  emptyEl.hidden = true;
+  rows.forEach(function (r, i) {
+    var li = document.createElement('li');
+    if (r.me) li.className = 'me';
+    var rank = document.createElement('span');
+    rank.className = 'rank';
+    rank.textContent = i + 1;
+    var name = document.createElement('span');
+    name.className = 'lb-name';
+    name.textContent = r.display_name || 'Игрок';
+    var wins = document.createElement('span');
+    wins.className = 'lb-wins';
+    wins.textContent = r.wins + ' 🏆';
+    var sub = document.createElement('small');
+    sub.textContent = ' · ничьих ' + r.draws;
+    wins.appendChild(sub);
+    li.appendChild(rank); li.appendChild(name); li.appendChild(wins);
+    listEl.appendChild(li);
+  });
+}
 
 })();

@@ -113,8 +113,8 @@ function wireAuth() {
             password: pass,
             options: { data: { display_name: name } }
           }).then(function (su) {
-            btn.disabled = false; btn.textContent = 'Продолжить';
             if (su.error) {
+              btn.disabled = false; btn.textContent = 'Продолжить';
               if (/already registered|already been registered/i.test(su.error.message || '')) {
                 showMsg(TT.$('auth-msg'), 'Неверный пароль. Если не помните его — нажмите «Не помню пароль».', 'error');
               } else {
@@ -124,11 +124,13 @@ function wireAuth() {
             }
             var u = su.data && su.data.user;
             if (u && Array.isArray(u.identities) && u.identities.length === 0) {
+              btn.disabled = false; btn.textContent = 'Продолжить';
               showMsg(TT.$('auth-msg'), 'Неверный пароль. Если не помните его — нажмите «Не помню пароль».', 'error');
               return;
             }
             if (su.data.session) { location.replace(nextTarget()); return; }
-            showMsg(TT.$('auth-msg'), 'Аккаунт создан! Мы отправили письмо — подтвердите email и возвращайтесь.', 'info');
+            showMsg(TT.$('auth-msg'), 'Аккаунт создан! Мы отправили письмо на ' + email + ' — подтвердите email по ссылке из письма и возвращайтесь.', 'info');
+            btn.textContent = 'Письмо отправлено ✓';
           });
           return;
         }

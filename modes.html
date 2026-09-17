@@ -40,14 +40,15 @@
         <span class="emoji">🤖</span>
         <span>
           <span class="t">С компьютером</span><br />
-          <span class="d">Три уровня сложности</span>
+          <span class="d">Четыре уровня сложности</span>
         </span>
         <span class="arrow">›</span>
       </button>
-      <div class="diff-row" id="diff-row" hidden style="margin-top:10px;">
-        <button class="btn ghost" data-diff="easy" type="button">Лёгкий</button>
-        <button class="btn ghost" data-diff="medium" type="button">Средний</button>
-        <button class="btn primary" data-diff="hard" type="button">Сложный</button>
+      <div class="diff-row" id="diff-row" hidden style="margin-top:10px; flex-wrap:wrap;">
+        <button class="btn ghost" data-diff="easy" type="button" style="flex:1 1 40%;">Лёгкий</button>
+        <button class="btn ghost" data-diff="medium" type="button" style="flex:1 1 40%;">Средний</button>
+        <button class="btn ghost" data-diff="hard" type="button" style="flex:1 1 40%;">Сложный</button>
+        <button class="btn primary" data-diff="adaptive" type="button" style="flex:1 1 40%;">Адаптивный</button>
       </div>
     </div>
 

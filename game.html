@@ -61,7 +61,7 @@
 'use strict';
 
 var mode = TT.param('mode') === 'local' ? 'local' : 'ai';
-var difficulty = ['easy', 'medium', 'hard'].indexOf(TT.param('difficulty')) >= 0 ? TT.param('difficulty') : 'hard';
+var difficulty = ['easy', 'medium', 'hard', 'adaptive'].indexOf(TT.param('difficulty')) >= 0 ? TT.param('difficulty') : 'hard';
 
 var boardArr = ['', '', '', '', '', '', '', '', ''];
 var current = 'X';
@@ -70,7 +70,7 @@ var aiThinking = false;
 var boardCtl = null;
 var statusEl = null;
 
-var DIFF_NAMES = { easy: 'Лёгкий', medium: 'Средний', hard: 'Сложный' };
+var DIFF_NAMES = { easy: 'Лёгкий', medium: 'Средний', hard: 'Сложный', adaptive: 'Адаптивный' };
 
 function updateStatus() {
   if (mode === 'ai') {
@@ -94,11 +94,15 @@ function finish(w) {
   if (!w.player) {
     statusEl.textContent = 'Ничья!';
     TT.playSound('draw');
-    if (mode === 'ai') TT.recordResult('draws');
+    if (mode === 'ai') {
+      TT.recordResult('draws');
+      if (difficulty === 'adaptive') adaptLearn(boardArr, false);
+    }
     return;
   }
   boardCtl.highlight(w.line, w.player);
   if (mode === 'ai') {
+    if (difficulty === 'adaptive') adaptLearn(boardArr, w.player === 'X');
     if (w.player === 'X') { statusEl.textContent = 'Вы победили! 🎉'; TT.playSound('win'); TT.recordResult('wins'); }
     else { statusEl.textContent = 'Компьютер победил'; TT.playSound('lose'); TT.recordResult('losses'); }
   } else {
@@ -135,6 +139,7 @@ function onCell(i) {
 function aiMove() {
   if (difficulty === 'easy') return randomMove();
   if (difficulty === 'medium') return mediumMove();
+  if (difficulty === 'adaptive') return adaptiveMove();
   return bestMove();
 }
 
@@ -202,6 +207,53 @@ function minimax(b, depth, isMax) {
     if (score < worst) worst = score;
   }
   return worst;
+}
+
+/* ---------- адаптивный ИИ: сила «сложного», но учитывает привычки игрока ---------- */
+var ADAPT_KEY = 'ttt_adapt';
+
+function adaptLoad() {
+  try {
+    var raw = localStorage.getItem(ADAPT_KEY);
+    if (raw) {
+      var d = JSON.parse(raw);
+      if (d && Array.isArray(d.plays) && d.plays.length === 9 && Array.isArray(d.wins) && d.wins.length === 9) return d;
+    }
+  } catch (e) {}
+  return { plays: [0, 0, 0, 0, 0, 0, 0, 0, 0], wins: [0, 0, 0, 0, 0, 0, 0, 0, 0] };
+}
+
+function adaptLearn(board, playerWon) {
+  var d = adaptLoad();
+  for (var i = 0; i < 9; i++) {
+    if (board[i] === 'X') {
+      d.plays[i]++;
+      if (playerWon) d.wins[i]++;
+    }
+  }
+  try { localStorage.setItem(ADAPT_KEY, JSON.stringify(d)); } catch (e) {}
+}
+
+function adaptiveMove() {
+  var best = -Infinity;
+  var scored = [];
+  for (var i = 0; i < 9; i++) {
+    if (!boardArr[i]) {
+      boardArr[i] = 'O';
+      var s = minimax(boardArr, 0, false);
+      boardArr[i] = '';
+      scored.push({ i: i, s: s });
+      if (s > best) best = s;
+    }
+  }
+  var tied = [];
+  for (var k = 0; k < scored.length; k++) if (scored[k].s === best) tied.push(scored[k]);
+  if (tied.length === 1) return tied[0].i;
+  var d = adaptLoad();
+  tied.sort(function (a, b) {
+    return (d.plays[b.i] + d.wins[b.i] * 2) - (d.plays[a.i] + d.wins[a.i] * 2);
+  });
+  return tied[0].i;
 }
 
 /* ---------- запуск ---------- */

@@ -67,7 +67,7 @@ var room = null;
 var myMark = null;
 var channel = null;
 var finishRecorded = false;
-var lastFilled = 0;
+var painted = false;
 var boardArr = ['', '', '', '', '', '', '', '', ''];
 var over = true;
 var boardCtl = null;
@@ -88,11 +88,6 @@ function subscribeRoom(code) {
     .subscribe();
 }
 
-function filledIndexOfLast(b) {
-  for (var i = 8; i >= 0; i--) if (b[i]) return i;
-  return 0;
-}
-
 function renderRoom(r) {
   room = r;
   if (!myMark) myMark = (TT.currentUser && r.host_id === TT.currentUser.id) ? 'X' : 'O';
@@ -103,13 +98,18 @@ function renderRoom(r) {
   var newBoard = Array.isArray(r.board) ? r.board : ['', '', '', '', '', '', '', '', ''];
   var filled = 0;
   for (var i = 0; i < 9; i++) if (newBoard[i]) filled++;
-  var prevFilled = lastFilled;
 
+  // Перерисовываем без повторной анимации: анимируется только новая метка
+  var prevBoard = boardArr;
   boardArr = newBoard.slice();
+  var newIdx = -1;
+  for (var d = 0; d < 9; d++) { if (!prevBoard[d] && boardArr[d]) newIdx = d; }
   boardCtl.clear();
-  for (var j = 0; j < 9; j++) if (boardArr[j]) boardCtl.place(j, boardArr[j], true);
-  if (filled > prevFilled) TT.playSound(boardArr[filledIndexOfLast(boardArr)] === 'X' ? 'x' : 'o');
-  lastFilled = filled;
+  for (var j = 0; j < 9; j++) {
+    if (boardArr[j]) boardCtl.place(j, boardArr[j], !painted || j !== newIdx);
+  }
+  if (painted && newIdx >= 0) TT.playSound(boardArr[newIdx] === 'X' ? 'x' : 'o');
+  painted = true;
 
   var w = TT.winnerOf(boardArr);
   if (w) boardCtl.highlight(w.line, w.player);

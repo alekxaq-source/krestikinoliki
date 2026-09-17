@@ -51,9 +51,14 @@ TT.initAuthPage = function (opts) {
     if (opts.onNoSdk) opts.onNoSdk();
     return;
   }
-  wireTabs();
-  wireSignIn();
-  wireSignUp();
+  if (/type=recovery/.test(location.hash)) {
+    wireRecovery();
+    return;
+  }
+  if (/error=/.test(location.hash)) {
+    showMsg(TT.$('auth-msg'), 'Ссылка из письма устарела или уже использована. Войдите или запросите новую.', 'error');
+  }
+  wireAuth();
   TT.sb.auth.getSession().then(function (res) {
     if (res.data.session) location.replace(nextTarget());
   });
@@ -90,54 +95,86 @@ function showMsg(el, text, kind) {
   el.hidden = false;
 }
 
-function wireTabs() {
-  var tabs = document.querySelectorAll('.tab');
-  tabs.forEach(function (t) {
-    t.addEventListener('click', function () {
-      tabs.forEach(function (x) { x.classList.remove('active'); });
-      t.classList.add('active');
-      TT.$('form-signin').hidden = t.getAttribute('data-tab') !== 'signin';
-      TT.$('form-signup').hidden = t.getAttribute('data-tab') !== 'signup';
-      TT.$('auth-msg').hidden = true;
-    });
-  });
-}
-
-function wireSignIn() {
-  TT.$('form-signin').addEventListener('submit', function (e) {
+function wireAuth() {
+  TT.$('form-auth').addEventListener('submit', function (e) {
     e.preventDefault();
-    var btn = TT.$('si-btn');
-    btn.disabled = true; btn.textContent = 'Входим…';
-    TT.sb.auth.signInWithPassword({ email: TT.$('si-email').value.trim(), password: TT.$('si-pass').value })
+    var email = TT.$('a-email').value.trim();
+    var pass = TT.$('a-pass').value;
+    var btn = TT.$('a-btn');
+    btn.disabled = true; btn.textContent = 'Проверяем…';
+    TT.sb.auth.signInWithPassword({ email: email, password: pass })
       .then(function (res) {
-        if (res.error) {
-          showMsg(TT.$('auth-msg'), humanAuthError(res.error), 'error');
-          btn.disabled = false; btn.textContent = 'Войти';
-        } else {
-          location.replace(nextTarget());
+        if (!res.error) { location.replace(nextTarget()); return; }
+        if (/invalid login credentials/i.test(res.error.message || '')) {
+          btn.textContent = 'Создаём аккаунт…';
+          var name = (email.split('@')[0] || 'Игрок').slice(0, 30);
+          TT.sb.auth.signUp({
+            email: email,
+            password: pass,
+            options: { data: { display_name: name } }
+          }).then(function (su) {
+            btn.disabled = false; btn.textContent = 'Продолжить';
+            if (su.error) {
+              if (/already registered|already been registered/i.test(su.error.message || '')) {
+                showMsg(TT.$('auth-msg'), 'Неверный пароль. Если не помните его — нажмите «Не помню пароль».', 'error');
+              } else {
+                showMsg(TT.$('auth-msg'), humanAuthError(su.error), 'error');
+              }
+              return;
+            }
+            var u = su.data && su.data.user;
+            if (u && Array.isArray(u.identities) && u.identities.length === 0) {
+              showMsg(TT.$('auth-msg'), 'Неверный пароль. Если не помните его — нажмите «Не помню пароль».', 'error');
+              return;
+            }
+            if (su.data.session) { location.replace(nextTarget()); return; }
+            showMsg(TT.$('auth-msg'), 'Аккаунт создан! Мы отправили письмо — подтвердите email и возвращайтесь.', 'info');
+          });
+          return;
         }
+        btn.disabled = false; btn.textContent = 'Продолжить';
+        showMsg(TT.$('auth-msg'), humanAuthError(res.error), 'error');
+      });
+  });
+
+  TT.$('forgot-link').addEventListener('click', function () {
+    var email = TT.$('a-email').value.trim();
+    if (!email) {
+      showMsg(TT.$('auth-msg'), 'Сначала введите ваш email в поле выше.', 'info');
+      TT.$('a-email').focus();
+      return;
+    }
+    var btn = TT.$('forgot-link');
+    btn.disabled = true; btn.textContent = 'Отправляем…';
+    TT.sb.auth.resetPasswordForEmail(email, { redirectTo: 'https://alekxaq-source.github.io/krestikinoliki/index.html' })
+      .then(function (res) {
+        btn.disabled = false; btn.textContent = 'Не помню пароль';
+        if (res.error) { showMsg(TT.$('auth-msg'), humanAuthError(res.error), 'error'); return; }
+        showMsg(TT.$('auth-msg'), 'Письмо со ссылкой на сброс пароля отправлено на ' + email + '.', 'info');
       });
   });
 }
 
-function wireSignUp() {
-  TT.$('form-signup').addEventListener('submit', function (e) {
+function wireRecovery() {
+  TT.$('form-auth').hidden = true;
+  TT.$('form-recovery').hidden = false;
+  document.title = 'Новый пароль — Крестики-нолики';
+  var h1 = document.querySelector('.auth-card h1');
+  if (h1) h1.textContent = 'Новый пароль';
+  var sub = document.querySelector('.auth-card > .muted');
+  if (sub) sub.textContent = 'Придумайте новый пароль для вашего аккаунта.';
+  TT.$('form-recovery').addEventListener('submit', function (e) {
     e.preventDefault();
-    var btn = TT.$('su-btn');
-    btn.disabled = true; btn.textContent = 'Создаём…';
-    TT.sb.auth.signUp({
-      email: TT.$('su-email').value.trim(),
-      password: TT.$('su-pass').value,
-      options: { data: { display_name: TT.$('su-name').value.trim() } }
-    }).then(function (res) {
+    var btn = TT.$('r-btn');
+    btn.disabled = true; btn.textContent = 'Сохраняем…';
+    TT.sb.auth.updateUser({ password: TT.$('r-pass').value }).then(function (res) {
       if (res.error) {
+        btn.disabled = false; btn.textContent = 'Сохранить пароль';
         showMsg(TT.$('auth-msg'), humanAuthError(res.error), 'error');
-        btn.disabled = false; btn.textContent = 'Создать аккаунт';
         return;
       }
-      if (res.data.session) { location.replace(nextTarget()); return; }
-      showMsg(TT.$('auth-msg'), 'Готово! Мы отправили письмо — подтвердите email и войдите.', 'info');
-      btn.disabled = false; btn.textContent = 'Создать аккаунт';
+      showMsg(TT.$('auth-msg'), 'Пароль обновлён! Заходим…', 'info');
+      setTimeout(function () { location.replace('menu.html'); }, 800);
     });
   });
 }
@@ -147,8 +184,9 @@ function humanAuthError(err) {
   if (/invalid login credentials/i.test(m)) return 'Неверный email или пароль.';
   if (/already registered|already been registered/i.test(m)) return 'Такой email уже зарегистрирован — попробуйте войти.';
   if (/at least 6/i.test(m)) return 'Пароль должен быть не короче 6 символов.';
-  if (/valid email/i.test(m)) return 'Похоже, email введён с ошибкой.';
+  if (/valid email|invalid email/i.test(m)) return 'Похоже, email введён с ошибкой.';
   if (/email not confirmed/i.test(m)) return 'Email ещё не подтверждён — загляните в почту.';
+  if (/too many requests|rate limit|security purposes/i.test(m)) return 'Слишком много попыток — подождите минуту.';
   return 'Ошибка: ' + m;
 }
 

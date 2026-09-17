@@ -25,39 +25,27 @@
 <main class="auth-wrap">
   <div class="card auth-card">
     <h1>Сыграем?</h1>
-    <p class="muted">Войдите, чтобы сохранять статистику, играть по сети и попадать в таблицу лидеров.</p>
+    <p class="muted">Введите email и пароль — если аккаунта ещё нет, мы создадим его автоматически.</p>
 
-    <div class="tabs" role="tablist">
-      <button class="tab active" data-tab="signin" type="button">Вход</button>
-      <button class="tab" data-tab="signup" type="button">Регистрация</button>
-    </div>
-
-    <form id="form-signin">
+    <form id="form-auth" style="margin-top:20px;">
       <div class="field">
-        <label for="si-email">Email</label>
-        <input id="si-email" type="email" required autocomplete="email" placeholder="you@example.com" />
+        <label for="a-email">Email</label>
+        <input id="a-email" type="email" required autocomplete="email" placeholder="you@example.com" />
       </div>
       <div class="field">
-        <label for="si-pass">Пароль</label>
-        <input id="si-pass" type="password" required autocomplete="current-password" placeholder="••••••••" />
+        <label for="a-pass">Пароль</label>
+        <input id="a-pass" type="password" required minlength="6" autocomplete="current-password" placeholder="Минимум 6 символов" />
       </div>
-      <button class="btn primary" style="width:100%" type="submit" id="si-btn">Войти</button>
+      <button class="btn primary" style="width:100%" type="submit" id="a-btn">Продолжить</button>
+      <button type="button" id="forgot-link" class="btn ghost small" style="width:100%; margin-top:10px;">Не помню пароль</button>
     </form>
 
-    <form id="form-signup" hidden>
+    <form id="form-recovery" hidden style="margin-top:20px;">
       <div class="field">
-        <label for="su-name">Имя игрока</label>
-        <input id="su-name" type="text" required maxlength="30" placeholder="Как вас называть?" />
+        <label for="r-pass">Новый пароль</label>
+        <input id="r-pass" type="password" required minlength="6" autocomplete="new-password" placeholder="Минимум 6 символов" />
       </div>
-      <div class="field">
-        <label for="su-email">Email</label>
-        <input id="su-email" type="email" required autocomplete="email" placeholder="you@example.com" />
-      </div>
-      <div class="field">
-        <label for="su-pass">Пароль</label>
-        <input id="su-pass" type="password" required minlength="6" autocomplete="new-password" placeholder="Минимум 6 символов" />
-      </div>
-      <button class="btn primary" style="width:100%" type="submit" id="su-btn">Создать аккаунт</button>
+      <button class="btn primary" style="width:100%" type="submit" id="r-btn">Сохранить пароль</button>
     </form>
 
     <div id="auth-msg" class="msg" hidden></div>

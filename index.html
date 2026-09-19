@@ -8,25 +8,19 @@
 <link rel="stylesheet" href="style.css" />
 </head>
 <body>
-
 <header class="top">
   <div class="brand">
     <svg width="30" height="30" viewBox="0 0 30 30" fill="none" aria-hidden="true">
       <path d="M5 5 L13 13 M13 5 L5 13" stroke="#5E9FE8" stroke-width="2.6" stroke-linecap="round"/>
       <circle cx="19.5" cy="19.5" r="6.5" stroke="#DE9255" stroke-width="2.6"/>
     </svg>
-    <div>
-      <div class="brand-title">Крестики-нолики</div>
-      <div class="brand-sub">на Supabase</div>
-    </div>
+    <div><div class="brand-title">Крестики-нолики</div><div class="brand-sub">на Supabase</div></div>
   </div>
 </header>
-
 <main class="auth-wrap">
   <div class="card auth-card">
     <h1>Сыграем?</h1>
-    <p class="muted">Введите email и пароль — если аккаунта ещё нет, мы создадим его автоматически.</p>
-
+    <p class="muted">Войдите в существующий аккаунт или создайте новый — всё на одной странице.</p>
     <form id="form-auth" style="margin-top:20px;">
       <div class="field">
         <label for="a-email">Email</label>
@@ -36,10 +30,10 @@
         <label for="a-pass">Пароль</label>
         <input id="a-pass" type="password" required minlength="6" autocomplete="current-password" placeholder="Минимум 6 символов" />
       </div>
-      <button class="btn primary" style="width:100%" type="submit" id="a-btn">Продолжить</button>
+      <button class="btn primary" style="width:100%" type="submit" id="a-btn">Войти</button>
+      <button class="btn ghost" style="width:100%; margin-top:10px;" type="button" id="signup-btn">Создать аккаунт</button>
       <button type="button" id="forgot-link" class="btn ghost small" style="width:100%; margin-top:10px;">Не помню пароль</button>
     </form>
-
     <form id="form-recovery" hidden style="margin-top:20px;">
       <div class="field">
         <label for="r-pass">Новый пароль</label>
@@ -47,20 +41,18 @@
       </div>
       <button class="btn primary" style="width:100%" type="submit" id="r-btn">Сохранить пароль</button>
     </form>
-
     <div id="auth-msg" class="msg" hidden></div>
     <p class="fine">Аккаунт и статистика хранятся в Supabase-проекте «krestikinoliki».</p>
   </div>
 </main>
-
 <script src="app.js"></script>
+<script src="auth-v2.js"></script>
 <script>
 TT.initAuthPage({
   onNoSdk: function () {
     var m = TT.$('auth-msg');
-    m.textContent = 'Не удалось загрузить Supabase SDK. Проверьте подключение к интернету и перезагрузите страницу.';
-    m.className = 'msg error';
-    m.hidden = false;
+    m.textContent = 'Не удалось загрузить Supabase SDK. Проверьте интернет и перезагрузите страницу.';
+    m.className = 'msg error'; m.hidden = false;
   }
 });
 </script>
